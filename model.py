@@ -52,11 +52,15 @@ class FinanceBro:
                 
             #only keep one column index
             combined_data.columns = combined_data.columns.get_level_values(0)
-            #reset index
-            
+            #add column for profit and volatility
+            combined_data['Profit'] = combined_data.iloc[:, 0].pct_change()
+            combined_data['Volatility'] = combined_data.iloc[:, 0].rolling(30).std()
+            #drop na values
+            combined_data.dropna(inplace=True)
             combined_data.to_csv('combined_data.csv')  # Save combined data once at the end
             print("Saved combined data for all tickers.")
             return combined_data
+        
 
     def split_data(self, data):
         '''Splits the data into features and target for training and testing.'''
