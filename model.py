@@ -40,7 +40,7 @@ class FinanceBro:
         '''Import csv data. if none Fetches and combines data for all tickers into a single DataFrame.'''
 
         try:
-            combined_data = pd.read_csv('combined_data.csv', index_col='Date', parse_dates=True)
+            combined_data = pd.read_csv('combined_data.csv',index_col='Date', parse_dates=True)
             print("Loaded combined data.")
             return combined_data
         except FileNotFoundError:
@@ -49,8 +49,11 @@ class FinanceBro:
             for ticker in tickers:
                 ticker_data = self.get_data(ticker)
                 combined_data = pd.concat([combined_data, ticker_data], axis=1)
+                
+            #only keep one column index
+            combined_data.columns = combined_data.columns.get_level_values(0)
+            #reset index
             
-            combined_data = combined_data.pct_change().dropna()  # Ensure all data is in percent change format
             combined_data.to_csv('combined_data.csv')  # Save combined data once at the end
             print("Saved combined data for all tickers.")
             return combined_data
