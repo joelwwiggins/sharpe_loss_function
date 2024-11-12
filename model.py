@@ -37,16 +37,23 @@ class FinanceBro:
         return data
 
     def get_combined_data(self, tickers):
-        '''Fetches and combines data for all tickers into a single DataFrame.'''
-        combined_data = pd.DataFrame()
-        for ticker in tickers:
-            ticker_data = self.get_data(ticker)
-            combined_data = pd.concat([combined_data, ticker_data], axis=1)
-        
-        combined_data = combined_data.pct_change().dropna()  # Ensure all data is in percent change format
-        combined_data.to_csv('data/combined_data.csv')  # Save combined data once at the end
-        print("Saved combined data for all tickers.")
-        return combined_data
+        '''Import csv data. if none Fetches and combines data for all tickers into a single DataFrame.'''
+
+        try:
+            combined_data = pd.read_csv('combined_data.csv', index_col='Date', parse_dates=True)
+            print("Loaded combined data.")
+            return combined_data
+        except FileNotFoundError:
+            pass
+            combined_data = pd.DataFrame()
+            for ticker in tickers:
+                ticker_data = self.get_data(ticker)
+                combined_data = pd.concat([combined_data, ticker_data], axis=1)
+            
+            combined_data = combined_data.pct_change().dropna()  # Ensure all data is in percent change format
+            combined_data.to_csv('combined_data.csv')  # Save combined data once at the end
+            print("Saved combined data for all tickers.")
+            return combined_data
 
     def split_data(self, data):
         '''Splits the data into features and target for training and testing.'''
@@ -99,14 +106,14 @@ if __name__ == '__main__':
     # Aggregate all stock data
     data = fb.get_combined_data(tickers)
 
-    # Split data
-    X_train, X_test, y_train, y_test = fb.split_data(data)
+    # # Split data
+    # X_train, X_test, y_train, y_test = fb.split_data(data)
 
-    # Train model
-    model = fb.train_model(X_train, y_train)
+    # # Train model
+    # model = fb.train_model(X_train, y_train)
 
-    # Evaluate model
-    mse, r2 = fb.evaluate_model(model, X_test, y_test)
+    # # Evaluate model
+    # mse, r2 = fb.evaluate_model(model, X_test, y_test)
 
-    # Plot predictions
-    fb.plot_predictions(model, X_test[:1], y_test[:1])
+    # # Plot predictions
+    # fb.plot_predictions(model, X_test[:1], y_test[:1])
