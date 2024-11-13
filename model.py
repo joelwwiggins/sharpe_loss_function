@@ -11,6 +11,7 @@ from dataclasses import dataclass
 import time
 import matplotlib.pyplot as plt
 
+
 @dataclass
 class FinanceBro:
     '''A prediction model to maximize profit and minimize volatility.'''
@@ -63,23 +64,19 @@ class FinanceBro:
         
 
     def split_data(self, data):
-        '''Splits the data into features and target for training and testing.'''
-        data = data.pct_change().dropna()  # Use percent change for stationarity
-        X = data.shift(1).dropna()  # Features are previous day changes
-        y = data[1:]  # Target is the current day's price (aligned with X)
-        
-        # Ensuring X and y have the same length by aligning them
-        X, y = X.align(y, join='inner', axis=0)
-        
-        train_size = int(len(X) * 0.8)
-        X_train, X_test = X[:train_size], X[train_size:]
-        y_train, y_test = y[:train_size], y[train_size:]
-        return X_train, X_test, y_train, y_test
+        '''separate profit and volatility column then Splits the data into features and target for training and testing.'''
+        X_train, X_test, y_train, y_test = train_test_split(data,data test_size=0.2, random_state=42, shuffle=False)
+        return X_train, X_test, y_train, y_test,
 
     def train_model(self, X_train, y_train):
-        '''Trains the model on the training data.'''
-        model = xgb.XGBRegressor(objective="reg:squarederror", n_estimators=100)
-        model.fit(X_train, y_train)
+
+        '''Trains the model on the training data. Use custom objective function to maximize profit and minimize volatility using grad and hess.'''
+
+        profit = y_train['Profit']
+        volatility = y_train['Volatility']
+        loss = profit - volatility
+        model = xgb.XGBRegressor(
+        model.fit(X_train, y_train, sample_weight=loss)
         return model
 
     def evaluate_model(self, model, X_test, y_test):
@@ -113,8 +110,8 @@ if __name__ == '__main__':
     # Aggregate all stock data
     data = fb.get_combined_data(tickers)
 
-    # # Split data
-    # X_train, X_test, y_train, y_test = fb.split_data(data)
+    # Split data
+    X_train, X_test, y_train, y_test = fb.split_data(data)
 
     # # Train model
     # model = fb.train_model(X_train, y_train)
