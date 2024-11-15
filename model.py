@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-import xgboost as xgb
+# import xgboost as xgb
 from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
 import yfinance as yf
@@ -114,6 +114,7 @@ class FinanceBro:
 
     #using tensorflow
 
+    @staticmethod
     def tf_portfolio_loss(y_true, y_pred, position_limit=0.1):
         positions = tf.clip_by_value(y_pred, -position_limit, position_limit)
         returns = positions * y_true
@@ -122,20 +123,22 @@ class FinanceBro:
     def train_tf_model(self, data):
         '''Trains a TensorFlow model on the data.'''
         X_train, X_test, Y_train, Y_test = self.split_data(data)
+        
+
         model = tf.keras.Sequential([
             tf.keras.layers.Dense(128, activation='relu'),
             tf.keras.layers.Dense(128, activation='relu'),
             tf.keras.layers.Dense(128, activation='relu'),
-            tf.keras.layers.Dense(500)  # Output layer
-        ])
-        model.compile(optimizer='adam', loss=tf_portfolio_loss)
+            tf.keras.layers.Dense(12)])  # Output layer for 500 stocks
+        model.compile(optimizer='adam', loss=FinanceBro.tf_portfolio_loss)
+        model.compile(optimizer='adam', loss=FinanceBro.tf_portfolio_loss)
         model.fit(X_train, Y_train, epochs=10)
         return model
     
     def eval_tf_model(self, model, X_test, Y_test):
         '''Evaluates the TensorFlow model on the test data.'''
         labels = model.predict(X_test)
-        loss = tf_portfolio_loss(Y_test, labels)
+        loss = self.tf_portfolio_loss(Y_test, labels)
         print(f'Loss: {loss}')
         return labels
     
@@ -157,9 +160,8 @@ if __name__ == '__main__':
     # model = fb.train_xgboostreg_model(data)
     # labels = fb.eval_xgb_model(model, data, data)
     # fb.plot_xgb(model, data, data) 
+    port_loss = fb.tf_portfolio_loss
     model = fb.train_tf_model(data)
     labels = fb.eval_tf_model(model, data, data)
     fb.plot_tf(model, data, data)
     print(labels)
-
-    
