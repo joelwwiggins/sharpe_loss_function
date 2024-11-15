@@ -115,7 +115,7 @@ class FinanceBro:
     #using tensorflow
 
     @staticmethod
-    def tf_portfolio_loss(y_true, y_pred, position_limit=0.1):
+    def tf_portfolio_loss(y_true, y_pred, position_limit=0.5):
         positions = tf.clip_by_value(y_pred, -position_limit, position_limit)
         returns = positions * y_true
         return -tf.reduce_mean(returns)  # Negative for maximization
@@ -126,14 +126,17 @@ class FinanceBro:
         
 
         model = tf.keras.Sequential([
-            tf.keras.layers.Dense(128, activation='relu'),
-            tf.keras.layers.Dense(128, activation='relu'),
-            tf.keras.layers.Dense(128, activation='relu'),
-            tf.keras.layers.Dense(12)])  # Output layer for 500 stocks
+            tf.keras.layers.Dense(64, activation='relu'),
+            tf.keras.layers.Dense(32, activation='relu'),
+            tf.keras.layers.Dense(10)])  # Output layer for 500 stocks
         model.compile(optimizer='adam', loss=FinanceBro.tf_portfolio_loss)
         model.compile(optimizer='adam', loss=FinanceBro.tf_portfolio_loss)
+        history = model.fit(X_train, Y_train, epochs=10)
+        
+        #model training loss for plot
         model.fit(X_train, Y_train, epochs=10)
-        return model
+
+        return model, X_test, Y_test, history
     
     def eval_tf_model(self, model, X_test, Y_test):
         '''Evaluates the TensorFlow model on the test data.'''
@@ -150,18 +153,69 @@ class FinanceBro:
         plt.plot(Y_test.index, labels[:, 1], label='Predicted')
 
         plt.legend()
+    
+    def plot_loss(self, history):
+        '''Plots the loss of the TensorFlow model during training.'''
+        plt.figure(figsize=(12, 6))
+        plt.plot(history.history['loss'], label='Loss')
+        plt.legend()
+
+    #plot the portfolio change over time vs the actual data
+    def plot_portfolio(self, labels, X_test):
+        '''Plots the portfolio value over time and shows the improvement compared to an equal-weighted portfolio.'''
+        # Predicted portfolio value
+        portfolio = labels.sum(axis=1)
+        portfolio_df = pd.DataFrame(portfolio, index=X_test.index, columns=['Predicted Portfolio Value'])
+        
+        # Equal-weighted portfolio value
+        equal_weighted_portfolio = X_test.mean(axis=1)
+        portfolio_df['Equal-Weighted Portfolio Value'] = equal_weighted_portfolio
+        
+        # Calculate percentage change for both portfolios
+        portfolio_df['Predicted Portfolio Change (%)'] = portfolio_df['Predicted Portfolio Value'].pct_change().fillna(0)
+        portfolio_df['Equal-Weighted Portfolio Change (%)'] = portfolio_df['Equal-Weighted Portfolio Value'].pct_change().fillna(0)
+        
+        plt.figure(figsize=(12, 12))
+        
+        # Plot portfolio values
+        plt.subplot(2, 1, 1)
+        plt.plot(portfolio_df.index, portfolio_df['Predicted Portfolio Value'], label='Predicted Portfolio Value')
+        plt.plot(portfolio_df.index, portfolio_df['Equal-Weighted Portfolio Value'], label='Equal-Weighted Portfolio Value', linestyle='--')
+        plt.legend()
+        plt.title('Portfolio Value Over Time')
+        
+        # Plot portfolio percentage changes
+        plt.subplot(2, 1, 2)
+        plt.plot(portfolio_df.index, portfolio_df['Predicted Portfolio Change (%)'], label='Predicted Portfolio Change (%)', color='orange')
+        plt.plot(portfolio_df.index, portfolio_df['Equal-Weighted Portfolio Change (%)'], label='Equal-Weighted Portfolio Change (%)', color='green', linestyle='--')
+        plt.legend()
+        plt.title('Portfolio Percentage Change Over Time')
+        
+        plt.tight_layout()
+        plt.show()
+    
 
 if __name__ == '__main__':
     fb = FinanceBro()
     
     tickers = fb.get_tickers()
     data = fb.get_combined_data(tickers)
-    data = fb.add_profit_volatility(data)
-    # model = fb.train_xgboostreg_model(data)
-    # labels = fb.eval_xgb_model(model, data, data)
-    # fb.plot_xgb(model, data, data) 
-    port_loss = fb.tf_portfolio_loss
-    model = fb.train_tf_model(data)
-    labels = fb.eval_tf_model(model, data, data)
-    fb.plot_tf(model, data, data)
+    # data = fb.add_profit_volatility(data)
+    
+    # Train TensorFlow model
+    model, X_test, Y_test, history = fb.train_tf_model(data)
+    
+    # Evaluate TensorFlow model
+    labels = fb.eval_tf_model(model, X_test, Y_test)
+    
+    # Plot TensorFlow model predictions
+    fb.plot_tf(model, X_test, Y_test)
+
+    #plot loss
+    fb.plot_loss(history)
+
+    # Plot portfolio value
+    fb.plot_portfolio(labels, X_test)
+    
+    # Print labels
     print(labels)
