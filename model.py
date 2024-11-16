@@ -11,6 +11,7 @@ import time
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 import tensorflow as tf
+from sklearn.preprocessing import StandardScaler
 
 
 
@@ -124,17 +125,28 @@ class FinanceBro:
         '''Trains a TensorFlow model on the data.'''
         X_train, X_test, Y_train, Y_test = self.split_data(data)
         
+        # Normalize the data
+        scaler = StandardScaler()
+        X_train = scaler.fit_transform(X_train)
+        X_test = scaler.transform(X_test)
+
+            # Reshape data for LSTM [samples, timesteps, features]
+        X_train = X_train.reshape((X_train.shape[0], 1, X_train.shape[1]))
+        X_test = X_test.reshape((X_test.shape[0], 1, X_test.shape[1]))
 
         model = tf.keras.Sequential([
-            tf.keras.layers.Dense(64, activation='relu'),
-            tf.keras.layers.Dense(32, activation='relu'),
-            tf.keras.layers.Dense(10)])  # Output layer for 500 stocks
-        model.compile(optimizer='adam', loss=FinanceBro.tf_portfolio_loss)
-        model.compile(optimizer='adam', loss=FinanceBro.tf_portfolio_loss)
-        history = model.fit(X_train, Y_train, epochs=10)
+                tf.keras.layers.LSTM(50, activation='relu', input_shape=(X_train.shape[1], X_train.shape[2])),
+                tf.keras.layers.Dropout(0.2),
+                tf.keras.layers.Dense(100),
+                tf.keras.layers.Dense(50),
+                tf.keras.layers.Dense(10)  # Output layer for 10 stocks
+            ])
+            
+        model.compile(optimizer='adam', loss='mean_squared_error', metrics=['mae'])
         
-        #model training loss for plot
-        model.fit(X_train, Y_train, epochs=10)
+        early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=50, restore_best_weights=True)
+        
+        history = model.fit(X_train, Y_train, epochs=500, batch_size=32, validation_split=0.2, callbacks=[early_stopping])
 
         return model, X_test, Y_test, history
     
@@ -161,14 +173,18 @@ class FinanceBro:
         plt.legend()
 
     #plot the portfolio change over time vs the actual data
-    def plot_portfolio(self, labels, X_test):
+    def plot_portfolio(self, labels, X_test, original_data):
         '''Plots the portfolio value over time and shows the improvement compared to an equal-weighted portfolio.'''
         # Predicted portfolio value
         portfolio = labels.sum(axis=1)
-        portfolio_df = pd.DataFrame(portfolio, index=X_test.index, columns=['Predicted Portfolio Value'])
+
+        portfolio_df = pd.DataFrame(portfolio, index=original_data.index[-len(portfolio):], columns=['Predicted Portfolio Value'])
         
+        # Reshape X_test back to 2D
+        X_test_2d = X_test.reshape((X_test.shape[0], X_test.shape[2]))
+
         # Equal-weighted portfolio value
-        equal_weighted_portfolio = X_test.mean(axis=1)
+        equal_weighted_portfolio = X_test_2d.mean(axis=1)
         portfolio_df['Equal-Weighted Portfolio Value'] = equal_weighted_portfolio
         
         # Calculate percentage change for both portfolios
@@ -215,7 +231,7 @@ if __name__ == '__main__':
     fb.plot_loss(history)
 
     # Plot portfolio value
-    fb.plot_portfolio(labels, X_test)
+    fb.plot_portfolio(labels, X_test, data)
     
-    # Print labels
-    print(labels)
+    #print weights vs actual data
+    print(model.get_weights())
