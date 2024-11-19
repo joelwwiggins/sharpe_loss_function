@@ -11,13 +11,9 @@ import time
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
-import xgboost as xgb
-import torch
-import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
-
-
-
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv1D, MaxPooling1D, LSTM, Dense, Flatten
+import tensorflow as tf
 
 @dataclass
 class FinanceBro:
@@ -59,125 +55,56 @@ class FinanceBro:
             print("Saved combined data for all tickers.")
             return combined_data
 
-    def add_profit_volatility(self, data):
-        '''Adds profit and volatility columns to the dataset.'''
-        daily_returns = data.pct_change()
-        data['Profit'] = daily_returns.mean(axis=1)
-        data['Volatility'] = daily_returns.std(axis=1)
-        data.dropna(inplace=True)
-        return data
+    def cnn_model(self, input_shape):
+        '''Creates a Convolutional Neural Network model.'''
+        model = Sequential([
+            Conv1D(filters=64, kernel_size=3, activation='relu', input_shape=(input_shape, 1)),
+            MaxPooling1D(pool_size=2),
+            Conv1D(filters=32, kernel_size=3, activation='relu'),
+            LSTM(50, return_sequences=False),
+            Dense(20)
+        ])
+        model.compile(optimizer='adam', loss='mse')
+        return model
+    
+    def predict(self, model, data, timesteps):
+        '''Predicts stock prices using the model.'''
+        scaler = StandardScaler()
+        scaled_data = scaler.fit_transform(data)
 
-    def train_cnn_model(self, data):
-        '''Trains a 2D CNN using PyTorch to predict Profit.'''
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        X_train, X_test, y_train, y_test = train_test_split(scaled_data, scaled_data, test_size=0.2, random_state=42)
         
-        # Prepare dataset
-        dataset = FinanceDataset(data)
-        train_size = int(0.8 * len(dataset))
-        test_size = len(dataset) - train_size
-        train_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, test_size])
+        # Reshape data
+        X_train = X_train.reshape((X_train.shape[0], X_train.shape[1], 1))
+        X_test = X_test.reshape((X_test.shape[0], X_test.shape[1], 1))
+        y_train = y_train
+        y_test = y_test
 
-        train_loader = DataLoader(dataset=train_dataset, batch_size=32, shuffle=False)
-        test_loader = DataLoader(dataset=test_dataset, batch_size=32, shuffle=False)
+        # Train model
+        history = model.fit(X_train, y_train, epochs=100, batch_size=32, verbose=1)
 
-        # Define model
-        num_features = data.shape[1] - 2  # Exclude 'Profit' and 'Volatility'
-        model = CNNModel(num_features=num_features).to(device)
-
-        criterion = nn.MSELoss()
-        optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-
-        # Training loop
-        num_epochs = 10
-        for epoch in range(num_epochs):
-            model.train()
-            for inputs, targets in train_loader:
-                inputs = inputs.to(device)
-                targets = targets.to(device)
-
-                outputs = model(inputs)
-                loss = criterion(outputs.squeeze(), targets)
-
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-
-            print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}')
-
-        # Evaluation
-        model.eval()
-        predictions = []
-        actuals = []
-        with torch.no_grad():
-            for inputs, targets in test_loader:
-                inputs = inputs.to(device)
-                targets = targets.to(device)
-                outputs = model(inputs)
-                predictions.extend(outputs.cpu().numpy())
-                actuals.extend(targets.cpu().numpy())
-        mse = mean_squared_error(actuals, predictions)
-        r2 = r2_score(actuals, predictions)
-        print(f'Test MSE: {mse:.4f}, R2 Score: {r2:.4f}')
-
-        return model, actuals, predictions
+        # Predict
+        prediction = model.predict(X_test)
+        return prediction, history, X_test, y_test, X_train, y_train 
     
-    def plot_actual_vs_predicted(self, actuals, predictions):
-        '''Plots actual vs. predicted values.'''
-        plt.figure(figsize=(10, 5))
-        plt.plot(actuals, label='Actual')
-        plt.plot(predictions, label='Predicted')
-        plt.legend()
-        plt.show()
-
-class FinanceDataset(Dataset):
-    def __init__(self, data):
-        self.X = data.drop(['Profit', 'Volatility'], axis=1).values
-        self.y = data['Profit'].values
-        # Normalize features
-        self.X = StandardScaler().fit_transform(self.X)
-        # Reshape for CNN input
-        self.X = self.X.reshape(-1, 1, self.X.shape[1], 1)
-
-    def __len__(self):
-        return len(self.y)
-
-    def __getitem__(self, idx):
-        return torch.tensor(self.X[idx], dtype=torch.float32), torch.tensor(self.y[idx], dtype=torch.float32)
-
-class CNNModel(nn.Module):
-    def __init__(self, num_features):
-        super(CNNModel, self).__init__()
-        self.layer1 = nn.Sequential(
-            nn.Conv2d(1, 16, kernel_size=(3,1)),
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=(2,1)),
-        )
-        conv_output_size = 16 * ((num_features - 2) // 2)
-        self.fc1 = nn.Linear(conv_output_size, 64)
-        self.fc2 = nn.Linear(64, 32)
-        self.fc3 = nn.Linear(32, 1)
-        self.relu = nn.ReLU()
-
-    def forward(self, x):
-        out = self.layer1(x)
-        out = out.view(out.size(0), -1)
-        out = self.fc1(out)
-        out = self.relu(out)
-        out = self.fc2(out)
-        out = self.relu(out)
-        out = self.fc3(out)
-        return out
-    
-
+    def plot_history(self, prediction, y_test):
+        '''Plots prediction vs actual stock prices. make aplot for every column feature'''
+        y_test = y_test  # Convert y_test to a NumPy array
+        for i in range(y_test.shape[1]):
+            plt.figure(figsize=(10, 6))
+            plt.plot(y_test[:, i], label='Actual')
+            plt.plot(prediction[:, i], label='Predicted')
+            plt.legend()
+            plt.show()
 
 if __name__ == '__main__':
-    fb = FinanceBro()
-    tickers = fb.get_tickers()
-    data = fb.get_combined_data(tickers)
-    data = fb.add_profit_volatility(data)
-    model, actuals, predictions = fb.train_cnn_model(data)
-    fb.plot_actual_vs_predicted(actuals, predictions)
-    
-    
-
-
+    print("Num GPUs Available: ", len(tf.config.experimental.list_physical_devices('GPU')))
+    finance_bro = FinanceBro()
+    tickers = finance_bro.get_tickers()
+    data = finance_bro.get_combined_data(tickers)
+    input_shape = data.shape[1]
+    model = finance_bro.cnn_model(input_shape)
+    prediction, history, X_test, y_test, X_train, y_train = finance_bro.predict(model, data, timesteps=None)
+    finance_bro.plot_history(prediction, y_test)
+    print(f'Available metrics: {history.history.keys()}')
+    print(f'loss: {history.history["loss"][-1] if "loss" in history.history else "N/A"}, r2_score: {r2_score(y_test, prediction)}')
