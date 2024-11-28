@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-# import xgboost as xgb
 from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
 import yfinance as yf
@@ -11,25 +10,13 @@ import time
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Conv1D, MaxPooling1D, LSTM, Dense, Flatten
-import tensorflow as tf
-from tensorflow.keras.losses import MeanSquaredError, MeanAbsoluteError, MeanAbsolutePercentageError, MeanSquaredLogarithmicError, Huber, LogCosh
-from tensorflow.keras.regularizers import l2
-from tensorflow.keras.regularizers import l1_l2
-from tensorflow.keras.regularizers import l1
-from tensorflow.keras.layers import Dropout
-from tensorflow.keras.layers import UpSampling1D, Concatenate
-from tensorflow.keras.layers import Cropping1D
-from tensorflow.keras.layers import GlobalAveragePooling1D
-
-
-
+import xgboost as xgb
+from sklearn.kernel_approximation import RBFSampler
 
 @dataclass
 class FinanceBro:
     '''A prediction model to maximize profit and minimize volatility.'''
-    
+
     def get_tickers(self):
         '''Fetches tickers of the S&P 500 companies.'''
         url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
@@ -65,150 +52,82 @@ class FinanceBro:
             combined_data.to_csv('combined_data.csv')
             print("Saved combined data for all tickers.")
             return combined_data
-        
-    def custom_loss(self, y_true, y_pred):
-        '''Custom loss function combining MSE and profit calculation.'''
-        mse = MeanSquaredError()(y_true, y_pred)
-        profit = tf.reduce_sum(y_pred[:, 1:] - y_pred[:, :-1])
-        volatility = tf.math.reduce_std(y_pred)
-        profit_volatility_ratio = profit / (volatility + 1e-6)
-        return mse - profit_volatility_ratio
-    
-    def self_attention_model(self, input_shape, output_shape):
-        '''Creates a Self-Attention model.'''
-        inputs = tf.keras.Input(shape=(input_shape, 1))
-        
-        # Initial Convolutional Layer
-        x = Conv1D(filters=64, kernel_size=3, activation='relu', padding='same')(inputs)
-        x = MaxPooling1D(pool_size=2)(x)
-        
-        # Self-Attention Layer
-        attn_output = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=64)(x, x)
-        attn_output = tf.keras.layers.Add()([x, attn_output])  # Residual connection
-        attn_output = tf.keras.layers.LayerNormalization()(attn_output)
-        
-        # Flatten and Dense Layers
-        x = Flatten()(attn_output)
-        x = Dense(128, activation='relu')(x)
-        outputs = Dense(output_shape)(x)
-        
-        # Build Model
-        model = tf.keras.Model(inputs=inputs, outputs=outputs)
-        model.compile(optimizer='adam', loss='mse')
+
+
+
+    def xgboost_model(self, X_train, y_train):
+        '''Creates and trains an XGBoost model.'''
+        model = xgb.XGBRegressor(objective='reg:squarederror', n_estimators=10000, learning_rate=0.01,reg_alpha=1)
+        model.fit(X_train, y_train)
         return model
-    
-    def predict(self, model, data, timesteps):
+
+    def predict(self, model, X_test):
         '''Predicts stock prices using the model.'''
-        '''Add profit and volatility columns to the data.'''
-        data = self.add_profit_and_volatility(data)
-        '''Scale the data using StandardScaler.profit and voloatility as input and stock prices as output'''
-
-        y_data = data[['Total_Profit', 'Total_Volatility']].values
-        X_data = data.drop(columns=['Total_Profit', 'Total_Volatility']).values
-
-        scaler = StandardScaler()
-        scaled_data = scaler.fit_transform(X_data)
-
-        X_train, X_test, y_train, y_test = train_test_split(scaled_data, y_data, test_size=0.2, random_state=42)
-        
-        # Reshape data
-        X_train = X_train.reshape((X_train.shape[0], X_train.shape[1], 1))
-        X_test = X_test.reshape((X_test.shape[0], X_test.shape[1], 1))
-        y_train = y_train
-        y_test = y_test
-
-        # Train model
-        history = model.fit(X_train, y_train, epochs=1000, batch_size=32, verbose=1)
-
-        # Predict
         prediction = model.predict(X_test)
-        return prediction, history, X_test, y_test, X_train, y_train 
-    
+        return prediction
+
     def plot_history(self, prediction, y_test):
-        '''Plots prediction vs actual stock prices. make aplot for every column feature'''
+        '''Plots prediction vs actual stock prices.'''
         plt.figure(figsize=(10, 6))
-        plt.plot(y_test, label='Actual')
-        plt.plot(prediction, label='Predicted')
+        plt.plot(y_test, label='Actual Profit')
+        plt.plot(prediction, label='Predicted Profit')
         plt.legend()
         plt.show()
 
-    def plot_loss_history(self, history):
-        '''Plots the training loss history.'''
-        plt.figure(figsize=(10, 6))
-        plt.plot(history.history['loss'], label='Training Loss')
-        plt.xlabel('Epochs')
-        plt.ylabel('Loss')
-        plt.title('Training Loss History')
-        plt.legend()
-        plt.show()
-    
-    def plot_pca_clusters(self,data, title):
-        pca = PCA(n_components=2)
-        principal_components = pca.fit_transform(data)
-        plt.figure(figsize=(10, 6))
-        plt.scatter(principal_components[:, 0], principal_components[:, 1], c='blue', cmap='viridis')
-        plt.xlabel('Principal Component 1')
-        plt.ylabel('Principal Component 2')
-        plt.title(title)
-        plt.colorbar()
-        plt.show()
 
-
-    
-    def print_output_layer_weights(self,model):
-        '''Prints the activation of the output layer in the model.'''
-        output_layer = model.layers[-1]  # Get the last layer of the model
-        weights = output_layer.get_weights()  # Returns a list of numpy arrays
-        print(f"Layer: {output_layer.name}")
-        for i, weight in enumerate(weights):
-            print(f"  Weight {i}: {weight.shape}")
-            print(weight)
-    
-    def get_stock_allocation(self,model):
-        '''Gets stock allocation from the weights of the last dense layer.'''
-        # Get the last dense layer
-        last_dense_layer = model.layers[-1]
-        
-        # Extract weights (assuming weights are in the form [weights, biases])
-        weights = last_dense_layer.get_weights()[0]
-        
-        # Sum the absolute values of the weights for each stock
-        allocation = np.sum(np.abs(weights), axis=0)
-        
-        # Normalize the allocation to sum to 1
-        allocation /= np.sum(allocation)
-        
-        # Convert to percentage
-        allocation *= 100
-        
-        return allocation
-    
-    def add_profit_and_volatility(self,data):
-        
-        '''Adds columns for total profit and total volatility to the data.'''
+    def add_profit(self, data):
         total_profit = data.diff().sum(axis=1)
-        total_volatility = data.diff().rolling(30).std().sum(axis=1)
         data['Total_Profit'] = total_profit
-        data['Total_Volatility'] = total_volatility
-        # Drop rows with NaN values
-        data.dropna(inplace=True)
-        return data 
+        # data['month'] = data.index.month
+        # data['day'] = data.index.dayofyear
+        # data['week'] = data.index.isocalendar().week
+
+        # # Drop rows with NaN values
+        # data.dropna(inplace=True)
+
+        # # Add RBF features for month and week
+        # rbf_sampler = RBFSampler(gamma=1.0, n_components=10, random_state=42)
+        # month_rbf_features = rbf_sampler.fit_transform(data[['month']])
+        # week_rbf_features = rbf_sampler.fit_transform(data[['week']])
+        # day_rbf_features = rbf_sampler.fit_transform(data[['day']])
+
+        # # Add RBF features to the dataframe
+        # for i in range(month_rbf_features.shape[1]):
+        #     data[f'month_rbf_{i}'] = month_rbf_features[:, i]
+        # for i in range(week_rbf_features.shape[1]):
+        #     data[f'week_rbf_{i}'] = week_rbf_features[:, i]
+        # for i in range(day_rbf_features.shape[1]):
+        #     data[f'day_rbf_{i}'] = day_rbf_features[:, i]
+
+        return data
+
 
 if __name__ == '__main__':
-    print("Num GPUs Available: ", len(tf.config.experimental.list_physical_devices('GPU')))
     finance_bro = FinanceBro()
     tickers = finance_bro.get_tickers()
     data = finance_bro.get_combined_data(tickers)
-    input_shape = data.shape[1]
-    output_shape = 2
-    model = finance_bro.self_attention_model(input_shape,output_shape)
 
-    
-    
-    
-    # Train and visualize the Conv1D model
-    conv_model = finance_bro.self_attention_model(input_shape, output_shape)
-    prediction_conv, history_conv, X_test_conv, y_test_conv, X_train_conv, y_train_conv = finance_bro.predict(conv_model, data, timesteps=None)
-    finance_bro.plot_pca_clusters(prediction_conv, 'PCA of Conv1D Model Predictions')
-    finance_bro.plot_history(prediction_conv, y_test_conv)
-    finance_bro.plot_loss_history(history_conv)
+    # Preprocess data
+    data = finance_bro.add_profit(data)
+
+    # Define target variables
+    y_data = data[['Total_Profit']].values
+
+    # Exclude target variables from features
+    X_data = data.drop(columns=['Total_Profit']).values
+
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X_data)
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X_scaled, y_data, test_size=0.2, random_state=42, shuffle=False
+    )
+
+    # Train the model
+    model = finance_bro.xgboost_model(X_train, y_train)
+
+    # Predict
+    prediction = finance_bro.predict(model, X_test)
+
+    # Plotting
+    finance_bro.plot_history(prediction, y_test)
