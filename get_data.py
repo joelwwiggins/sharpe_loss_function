@@ -43,7 +43,7 @@ class FinanceBro:
     def get_combined_data(self, tickers, batch_size=5, delay=2):
         '''Fetches and combines data for all tickers into a single DataFrame in batches.'''
         try:
-            combined_data = pd.read_csv('combined_data.csv', skiprows=2, index_col='Date', parse_dates=True)
+            combined_data = pd.read_csv('combined_data.csv', index_col='Date', parse_dates=True)
             print("Loaded combined data.")
             return combined_data
         except (FileNotFoundError, ValueError):
@@ -68,9 +68,3 @@ if __name__ == '__main__':
 
     print(data.head())
 
-    tickers = ['AAPL', 'MSFT', 'GOOGL']
-    data = {}
-
-    for ticker in tickers:
-        data[ticker] = yf.download(ticker, start='2020-01-01', end='2024-11-09')[['Close']]
-        time.sleep(2)  # Sleep for 2 seconds between requests
