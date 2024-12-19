@@ -41,10 +41,12 @@ class FinanceBro:
         return data
 
     def get_combined_data(self, tickers, batch_size=5, delay=2):
-        '''Fetches and combines data for all tickers into a single DataFrame in batches.'''
         try:
             combined_data = pd.read_csv('combined_data.csv', index_col='Date', parse_dates=True)
             print("Loaded combined data.")
+            if combined_data.empty:
+                print("Combined data is empty. Re-downloading data.")
+                raise ValueError("Empty combined_data.csv")
             return combined_data
         except (FileNotFoundError, ValueError):
             combined_data = pd.DataFrame()
@@ -53,7 +55,7 @@ class FinanceBro:
                 batch_data = yf.download(batch_tickers, start='2020-01-01', end='2024-11-09')['Close']
                 combined_data = pd.concat([combined_data, batch_data], axis=1)
                 print(f"Downloaded batch: {batch_tickers}")
-                time.sleep(delay)  # Sleep between batches to avoid rate limiting
+                time.sleep(delay)
             combined_data.to_csv('combined_data.csv')
             return combined_data
     
@@ -67,4 +69,6 @@ if __name__ == '__main__':
     data = finance_bro.get_combined_data(tickers)
 
     print(data.head())
+    data2 = data.dropna().values
+    print(f"Data shape after dropna: {data2.shape}")
 
