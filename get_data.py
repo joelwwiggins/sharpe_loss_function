@@ -12,7 +12,7 @@ from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 import xgboost as xgb
 from sklearn.kernel_approximation import RBFSampler
-import tensorflow as tf
+
 
 
 
@@ -35,12 +35,12 @@ class FinanceBro:
             data = pd.read_csv(f'data/{ticker}.csv', index_col='Date', parse_dates=True)
             print(f"Loaded data for {ticker}")
         except FileNotFoundError:
-            data = yf.download(ticker, start='2020-01-01', end='2024-11-09')[['Close']]
+            data = yf.download(ticker, start='2000-01-01', end='2024-12-18')[['Close']]
             data.rename(columns={'Close': ticker}, inplace=True)
             print(f"Downloaded data for {ticker}")
         return data
 
-    def get_combined_data(self, tickers, batch_size=5, delay=2):
+    def get_combined_data(self, tickers, batch_size=10, delay=2):
         try:
             combined_data = pd.read_csv('combined_data.csv', index_col='Date', parse_dates=True)
             print("Loaded combined data.")
@@ -52,7 +52,7 @@ class FinanceBro:
             combined_data = pd.DataFrame()
             for i in range(0, len(tickers), batch_size):
                 batch_tickers = tickers[i:i+batch_size]
-                batch_data = yf.download(batch_tickers, start='2020-01-01', end='2024-11-09')['Close']
+                batch_data = yf.download(batch_tickers, start='2000-01-01', end='2024-12-18')['Close']
                 combined_data = pd.concat([combined_data, batch_data], axis=1)
                 print(f"Downloaded batch: {batch_tickers}")
                 time.sleep(delay)
@@ -67,8 +67,10 @@ if __name__ == '__main__':
     finance_bro = FinanceBro()
     tickers = finance_bro.get_tickers()
     data = finance_bro.get_combined_data(tickers)
+    # Drop columns with 90% or more missing values
+    data = data.dropna(thresh=0.9 * len(data), axis=1)
+    print(f"Data shape after dropna: {data.shape}")
 
     print(data.head())
-    data2 = data.dropna().values
-    print(f"Data shape after dropna: {data2.shape}")
+    
 
